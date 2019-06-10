@@ -68,7 +68,7 @@ class RemoteKernelProviderBase(KernelProviderBase):
     # The following must be overridden by subclasses
     id = None
     kernels_dir = ''
-    actual_process_class = None
+    expected_process_class = None
     supported_process_classes = []
 
     def find_kernels(self):
@@ -122,9 +122,8 @@ class RemoteKernelProviderBase(KernelProviderBase):
         app_config = {}
         parent_app = Application.instance()
         if parent_app:
-            # Collect configs relative to our class instance.  Let any CLI options override file options
-            app_config = parent_app.config.get(self.__class__.__name__, {})
-            app_config.update(parent_app.cli_config.get(self.__class__.__name__, {}))
+            # Collect config relative to our class instance.
+            app_config = parent_app.config.get(self.__class__.__name__, {}).copy()
         return app_config
 
     def _get_proxy_info(self, kernelspec):
@@ -135,11 +134,11 @@ class RemoteKernelProviderBase(KernelProviderBase):
         if proxy_info:
             class_name = proxy_info.get('class_name', None)
             if class_name is not None and class_name in self.supported_process_classes:
-                if class_name != self.actual_process_class:  # Legacy check...
+                if class_name != self.expected_process_class:  # Legacy check...
                     log.warn("Legacy kernelspec detected with class_name: '{class_name}'.  "
-                             "Please convert to new class '{actual_class}' when possible.".
-                             format(class_name=proxy_info.get('class_name'), actual_class=self.actual_process_class))
-                    proxy_info.update({'class_name': self.actual_process_class})
+                             "Please convert to new class '{expected_class}' when possible.".
+                             format(class_name=proxy_info.get('class_name'), expected_class=self.expected_process_class))
+                    proxy_info.update({'class_name': self.expected_process_class})
                 if 'config' not in proxy_info:  # if no config stanza, add one for consistency
                     proxy_info.update({"config": {}})
 
