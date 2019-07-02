@@ -13,8 +13,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
     # The following must be overridden by subclasses
     id = None
     kernel_file = None
-    expected_process_class = None
-    supported_process_classes = []
+    lifecycle_manager_class = None
 
     def launch(self, kernelspec_name, cwd=None, kernel_params=None):
         """Launch a kernel, return (connection_info, kernel_manager).
@@ -24,10 +23,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
         This method launches and manages the kernel in a blocking manner.
         """
         kernelspec = self.ksm.get_kernel_spec(kernelspec_name)
-        proxy_info = self._get_proxy_info(kernelspec)
-        if proxy_info is None:
-            raise RuntimeError("Process information could not be found in kernelspec file for kernel '{}'!  "
-                               "Check the kernelspec file and try again.".format(kernelspec_name))
+        lifecycle_info = self._get_lifecycle_info(kernelspec)
 
         # Make the appropriate application configuration (relative to provider) available during launch
         app_config = self._get_app_config()
@@ -36,7 +32,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
         # and kernel manager.
         kwargs = dict()
         kwargs['kernelspec'] = kernelspec
-        kwargs['proxy_info'] = proxy_info
+        kwargs['lifecycle_info'] = lifecycle_info
         kwargs['cwd'] = cwd
         kwargs['kernel_params'] = kernel_params or {}
         kwargs['app_config'] = app_config
@@ -55,20 +51,33 @@ class RemoteKernelProviderBase(KernelSpecProvider):
             app_config = parent_app.config.get(self.__class__.__name__, {}).copy()
         return app_config
 
-    def _get_proxy_info(self, kernelspec):
+    def _get_lifecycle_info(self, kernel_spec):
         """Looks for the metadata stanza containing the process proxy information.
            This will be in the `process_proxy` stanza of the metadata.
         """
-        proxy_info = kernelspec.metadata.get('process_proxy', None)
-        if proxy_info:
-            class_name = proxy_info.get('class_name', None)
-            if class_name is not None and class_name in self.supported_process_classes:
-                if class_name != self.expected_process_class:  # Legacy check...
-                    self.log.warn("Legacy kernelspec detected with class_name: '{class_name}'.  "
-                             "Please convert to new class '{expected_class}' when possible.".
-                             format(class_name=proxy_info.get('class_name'), expected_class=self.expected_process_class))
-                    proxy_info.update({'class_name': self.expected_process_class})
-                if 'config' not in proxy_info:  # if no config stanza, add one for consistency
-                    proxy_info.update({"config": {}})
+        legacy_detected = False
+        lifecycle_info = kernel_spec.metadata.get('lifecycle_info', None)
+        if lifecycle_info is None:
+            lifecycle_info = kernel_spec.metadata.get('process_proxy', None)
+            if lifecycle_info:
+                legacy_detected = True
+        if lifecycle_info:
+            class_name = lifecycle_info.get('class_name', None)
+            if class_name is not None:
+                if class_name != self.lifecycle_manager_class:  # Legacy check...
+                    legacy_detected = True
+                    lifecycle_info.update({'class_name': self.lifecycle_manager_class})
+            if 'config' not in lifecycle_info:  # if no config stanza, add one for consistency
+                lifecycle_info.update({"config": {}})
 
-        return proxy_info
+        if lifecycle_info is None:  # Be sure to have a class_name with empty config
+            lifecycle_info = {'class_name': self.lifecycle_manager_class, 'config': {}}
+
+        if legacy_detected:
+            self.log.warn("Legacy kernelspec detected with at '{resource_dir}'.  Ensure the contents of "
+                          "'{kernel_json}' contain a 'lifecycle_info' stanza within 'metadata' with field "
+                          "'class_name: {expected_class}'".
+                          format(resource_dir=kernel_spec.resource_dir, kernel_json=self.kernel_file,
+                                 expected_class=self.lifecycle_manager_class))
+
+        return lifecycle_info
