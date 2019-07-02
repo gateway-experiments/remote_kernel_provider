@@ -29,7 +29,7 @@ class RemoteKernelManager(KernelManagerABC):
 
     def __init__(self, **kwargs):
         self.kernel = None
-        self.lifecycle_info = None
+        self.lifecycle_manager = None
         self.response_address = None
         self.sigint_value = None
         self.port_range = None
@@ -53,7 +53,7 @@ class RemoteKernelManager(KernelManagerABC):
         remote_kernel_manager_class = import_item(RemoteKernelManager.remote_kernel_manager_class_name)
         kernel_manager = remote_kernel_manager_class(**kwargs)
         kernel_manager.start_kernel()
-        return kernel_manager.lifecycle_info.connection_info, kernel_manager
+        return kernel_manager.lifecycle_manager.connection_info, kernel_manager
 
     @classmethod
     def get_kernel_id(cls, env):
@@ -85,18 +85,18 @@ class RemoteKernelManager(KernelManagerABC):
              and launching the kernel (e.g. Popen kwargs).
         """
 
-        lifecycle_info_class_name = self.lifecycle_info.get('class_name')
+        lifecycle_manager_class_name = self.lifecycle_info.get('class_name')
         self.log.debug("Instantiating kernel '{}' with lifecycle manager: {}".
-                       format(self.kernel_spec.display_name, lifecycle_info_class_name))
-        lifecycle_info_class = import_item(lifecycle_info_class_name)
-        self.lifecycle_info = lifecycle_info_class(kernel_manager=self,
+                       format(self.kernel_spec.display_name, lifecycle_manager_class_name))
+        lifecycle_manager_class = import_item(lifecycle_manager_class_name)
+        self.lifecycle_manager = lifecycle_manager_class(kernel_manager=self,
                                                    lifecycle_config=self.lifecycle_info.get('config', {}))
 
         # format command
         kernel_cmd = self.format_kernel_cmd()
 
         self.log.debug("Launching kernel: {} with command: {}".format(self.kernel_spec.display_name, kernel_cmd))
-        self.kernel = self.lifecycle_info.launch_process(kernel_cmd, env=self.env)
+        self.kernel = self.lifecycle_manager.launch_process(kernel_cmd, env=self.env)
 
     def is_alive(self):
         """Check whether the kernel is currently alive (e.g. the process exists)
@@ -168,25 +168,25 @@ class RemoteKernelManager(KernelManagerABC):
         # If we're using a remote proxy, we need to send the launcher indication that we're
         # shutting down so it can exit its listener thread, if its using one.  Note this will
         # occur after the initial (message-based) request to shutdown has been sent.
-        if self.lifecycle_info:
-            if isinstance(self.lifecycle_info, RemoteKernelLifecycleManager):
-                self.lifecycle_info.shutdown_listener()
+        if self.lifecycle_manager:
+            if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):
+                self.lifecycle_manager.shutdown_listener()
 
         self.kernel.kill()
 
     def cleanup(self):
         """Clean up any resources, such as files created by the manager."""
 
-        # Note we must use `lifecycle_info` here rather than `kernel`, although they're the same value.
+        # Note we must use `lifecycle_manager` here rather than `kernel`, although they're the same value.
         # The reason is because if the kernel shutdown sequence has triggered its "forced kill" logic
         # then that method (jupyter_client/manager.py/_kill_kernel()) will set `self.kernel` to None,
         # which then prevents lifecycle manager cleanup.
-        if self.lifecycle_info:
-            if isinstance(self.lifecycle_info, RemoteKernelLifecycleManager):
-                self.lifecycle_info.shutdown_listener()
+        if self.lifecycle_manager:
+            if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):
+                self.lifecycle_manager.shutdown_listener()
 
-            self.lifecycle_info.cleanup()
-            self.lifecycle_info = None
+            self.lifecycle_manager.cleanup()
+            self.lifecycle_manager = None
 
     def _capture_user_overrides(self, legacy_env, kernel_params_env):
         """
@@ -246,8 +246,8 @@ class RemoteKernelManager(KernelManagerABC):
 
         # If we're using a remote proxy, we need to send the launcher indication that we're
         # shutting down so it can exit its listener thread, if its using one.
-        if isinstance(self.lifecycle_info, RemoteKernelLifecycleManager):
-            self.lifecycle_info.shutdown_listener()
+        if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):
+            self.lifecycle_manager.shutdown_listener()
 
     # TODO - this needs to be addressed
     def restart_kernel(self, now=False, **kwargs):
@@ -276,7 +276,7 @@ class RemoteKernelManager(KernelManagerABC):
         # Check if this is a remote lifecycle manager and if now = True. If so, check its connection count. If no
         # connections, shutdown else perform the restart.  Note: auto-restart sets now=True, but handlers use
         # the default value (False).
-        if isinstance(self.lifecycle_info, RemoteKernelLifecycleManager) and now:
+        if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager) and now:
             if self.parent._kernel_connections.get(self.kernel_id, 0) == 0:
                 self.log.warning("Remote kernel ({}) will not be automatically restarted since there are no "
                                  "clients connected at this time.".format(self.kernel_id))
@@ -284,7 +284,7 @@ class RemoteKernelManager(KernelManagerABC):
                 self.parent.shutdown_kernel(self.kernel_id, now=now)
                 return
         super(RemoteKernelManager, self).restart_kernel(now, **kwargs)
-        if isinstance(self.lifecycle_info, RemoteKernelLifecycleManager):  # for remote kernels...
+        if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):  # for remote kernels...
             # Re-establish activity watching...
             if self._activity_stream:
                 self._activity_stream.close()
@@ -302,12 +302,12 @@ class RemoteKernelManager(KernelManagerABC):
         write_connection_file since it will create 5 useless ports that would not adhere to port-range
         restrictions if configured.
         """
-        if (isinstance(self.lifecycle_info, LocalKernelLifecycleManager) or not self.response_address) \
+        if (isinstance(self.lifecycle_manager, LocalKernelLifecycleManager) or not self.response_address) \
                 and not self.restarting:
             # However, since we *may* want to limit the selected ports, go ahead and get the ports using
             # the lifecycle manager (will be LocalPropcessProxy for default case) since the port selection will
             # handle the default case when the member ports aren't set anyway.
-            ports = self.lifecycle_info.select_ports(5)
+            ports = self.lifecycle_manager.select_ports(5)
             self.shell_port = ports[0]
             self.iopub_port = ports[1]
             self.stdin_port = ports[2]
