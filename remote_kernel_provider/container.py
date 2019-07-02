@@ -10,7 +10,7 @@ import urllib3  # docker ends up using this and it causes lots of noise, so turn
 
 from jupyter_client import launch_kernel, localinterfaces
 
-from .processproxy import RemoteProcessProxy
+from .lifecycle_manager import RemoteKernelLifecycleManager
 
 urllib3.disable_warnings()
 
@@ -28,27 +28,27 @@ gid_blacklist = os.getenv("EG_GID_BLACKLIST", "0").split(',')
 mirror_working_dirs = bool((os.getenv('EG_MIRROR_WORKING_DIRS', 'false').lower() == 'true'))
 
 
-class ContainerProcessProxy(RemoteProcessProxy):
+class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
     """Kernel lifecycle management for container-based kernels."""
-    def __init__(self, kernel_manager, proxy_config):
-        super(ContainerProcessProxy, self).__init__(kernel_manager, proxy_config)
+    def __init__(self, kernel_manager, lifecycle_config):
+        super(ContainerKernelLifecycleManager, self).__init__(kernel_manager, lifecycle_config)
         self.container_name = ''
         self.assigned_node_ip = None
-        self._determine_kernel_images(proxy_config)
+        self._determine_kernel_images(lifecycle_config)
 
-    def _determine_kernel_images(self, proxy_config):
+    def _determine_kernel_images(self, lifecycle_config):
         """Determine which kernel images to use.
 
-        Initialize to any defined in the process proxy override that then let those provided
+        Initialize to any defined in the lifecycle manager override that then let those provided
         by client via env override.
         """
-        if proxy_config.get('image_name'):
-            self.kernel_image = proxy_config.get('image_name')
+        if lifecycle_config.get('image_name'):
+            self.kernel_image = lifecycle_config.get('image_name')
         self.kernel_image = os.environ.get('KERNEL_IMAGE', self.kernel_image)
 
         self.kernel_executor_image = self.kernel_image  # Default the executor image to current image
-        if proxy_config.get('executor_image_name'):
-            self.kernel_executor_image = proxy_config.get('executor_image_name')
+        if lifecycle_config.get('executor_image_name'):
+            self.kernel_executor_image = lifecycle_config.get('executor_image_name')
         self.kernel_executor_image = os.environ.get('KERNEL_EXECUTOR_IMAGE', self.kernel_executor_image)
 
     def launch_process(self, kernel_cmd, **kwargs):
@@ -64,7 +64,7 @@ class ContainerProcessProxy(RemoteProcessProxy):
 
         self._enforce_uid_gid_blacklists(**kwargs)
 
-        super(ContainerProcessProxy, self).launch_process(kernel_cmd, **kwargs)
+        super(ContainerKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
         self.local_proc = launch_kernel(kernel_cmd, **kwargs)
         self.pid = self.local_proc.pid
@@ -130,7 +130,7 @@ class ContainerProcessProxy(RemoteProcessProxy):
         else:
             # This is very likely an interrupt signal, so defer to the super class
             # which should use the communication port.
-            return super(ContainerProcessProxy, self).send_signal(signum)
+            return super(ContainerKernelLifecycleManager, self).send_signal(signum)
 
     def kill(self):
         """Kills a containerized kernel.
@@ -151,11 +151,11 @@ class ContainerProcessProxy(RemoteProcessProxy):
         # cleanup we'd normally perform on forced kill situations.
 
         self.kill()
-        super(ContainerProcessProxy, self).cleanup()
+        super(ContainerKernelLifecycleManager, self).cleanup()
 
     def confirm_remote_startup(self):
         """Confirms the container has started and returned necessary connection information."""
-        self.start_time = RemoteProcessProxy.get_current_time()
+        self.start_time = RemoteKernelLifecycleManager.get_current_time()
         i = 0
         ready_to_connect = False  # we're ready to connect when we have a connection file to use
         while not ready_to_connect:
@@ -171,16 +171,16 @@ class ContainerProcessProxy(RemoteProcessProxy):
             else:
                 self.detect_launch_failure()
 
-    def get_process_info(self):
+    def get_lifecycle_info(self):
         """Captures the base information necessary for kernel persistence relative to containers."""
-        process_info = super(ContainerProcessProxy, self).get_process_info()
-        process_info.update({'assigned_node_ip': self.assigned_node_ip, })
-        return process_info
+        lifecycle_info = super(ContainerKernelLifecycleManager, self).get_lifecycle_info()
+        lifecycle_info.update({'assigned_node_ip': self.assigned_node_ip, })
+        return lifecycle_info
 
-    def load_process_info(self, process_info):
+    def load_lifecycle_info(self, lifecycle_info):
         """Loads the base information necessary for kernel persistence relative to containers."""
-        super(ContainerProcessProxy, self).load_process_info(process_info)
-        self.assigned_node_ip = process_info['assigned_node_ip']
+        super(ContainerKernelLifecycleManager, self).load_lifecycle_info(lifecycle_info)
+        self.assigned_node_ip = lifecycle_info['assigned_node_ip']
 
     @abc.abstractmethod
     def get_initial_states(self):

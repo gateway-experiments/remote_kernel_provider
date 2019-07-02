@@ -93,22 +93,22 @@ class KernelChannel(Enum):
     COMMUNICATION = "EG_COMM"  # Optional channel for remote launcher to issue interrupts - NOT a ZMQ channel
 
 
-class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
+class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
     """Process Proxy Abstract Base Class.
 
-    Defines the required methods for process proxy classes.  Some implementation is also performed
+    Defines the required methods for lifecycle manager classes.  Some implementation is also performed
     by these methods - common to all subclasses.
     """
 
-    def __init__(self, kernel_manager, proxy_config):
-        """Initialize the process proxy instance.
+    def __init__(self, kernel_manager, lifecycle_config):
+        """Initialize the lifecycle manager instance.
 
         Parameters
         ----------
         kernel_manager : RemoteKernelManager
-            The kernel manager instance tied to this process proxy.  This drives the process proxy method calls.
+            The kernel manager instance tied to this lifecycle manager.  This drives the lifecycle manager method calls.
 
-        proxy_config: dict
+        lifecycle_config: dict
             The dictionary of per-kernel config settings.  If none are specified, this will be an empty dict.
         """
         self.kernel_manager = kernel_manager
@@ -120,22 +120,22 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         self.kernel_launch_timeout = default_kernel_launch_timeout
         self.lower_port = 0
         self.upper_port = 0
-        self._validate_port_range(proxy_config)
+        self._validate_port_range(lifecycle_config)
 
         # Handle authorization sets...
         # Take union of unauthorized users...
         self.unauthorized_users = self.kernel_manager.app_config.get('unauthorized_users',{'root'})  # TODO - default val
-        if proxy_config.get('unauthorized_users'):
-            self.unauthorized_users = self.unauthorized_users.union(proxy_config.get('unauthorized_users').split(','))
+        if lifecycle_config.get('unauthorized_users'):
+            self.unauthorized_users = self.unauthorized_users.union(lifecycle_config.get('unauthorized_users').split(','))
 
         # Let authorized users override global value - if set on kernelspec...
-        if proxy_config.get('authorized_users'):
-            self.authorized_users = set(proxy_config.get('authorized_users').split(','))
+        if lifecycle_config.get('authorized_users'):
+            self.authorized_users = set(lifecycle_config.get('authorized_users').split(','))
         else:
             self.authorized_users = self.kernel_manager.app_config.get('authorized_users') or set()
 
         # Represents the local process (from popen) if applicable.  Note that we could have local_proc = None even when
-        # the subclass is a LocalProcessProxy (or YarnProcessProxy).  This will happen if EG is restarted and the
+        # the subclass is a LocalKernelLifecycleManager (or YarnKernelLifecycleManager).  This will happen if EG is restarted and the
         # persisted kernel-sessions indicate that its now running on a different server.  In those cases, we use the ip
         # member variable to determine if the persisted state is local or remote and use signals with the pid to
         # implement the poll, kill and send_signal methods.  As a result, what was a local kernel with one EG instance
@@ -147,11 +147,11 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
 
     @abc.abstractmethod
     def launch_process(self, kernel_cmd, **kwargs):
-        """Provides basic implementation for launching the process corresponding to the process proxy.
+        """Provides basic implementation for launching the process corresponding to the lifecycle manager.
 
         All overrides should call this method via `super()` so that basic/common operations can be
         performed.  Leaf class implementations are required to perform the actual process launch
-        depending on the type of process proxy.
+        depending on the type of lifecycle manager.
 
         Parameters
         ----------
@@ -187,14 +187,14 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         self._enforce_authorization(**kwargs)
         self._enforce_limits(**kwargs)
 
-        self.log.debug("BaseProcessProxy.launch_process() env: {}".format(kwargs.get('env')))
+        self.log.debug("BaseKernelLifecycleManager.launch_process() env: {}".format(kwargs.get('env')))
 
     def cleanup(self):
         """Performs optional cleanup after kernel is shutdown.  Child classes are responsible for implementations."""
         pass
 
     def poll(self):
-        """Determines if process proxy is still alive.
+        """Determines if lifecycle manager is still alive.
 
         If this corresponds to a local (popen) process, poll() is called on the subprocess.
         Otherwise, the zero signal is used to determine if active.
@@ -222,7 +222,7 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
                              format(max_poll_attempts * poll_interval))
 
     def send_signal(self, signum):
-        """Send signal `signum` to process proxy.
+        """Send signal `signum` to kernel
 
         Parameters
         ----------
@@ -242,14 +242,14 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
             result = self.local_proc.send_signal(signum)
         else:
             if self.ip and self.pid > 0:
-                if BaseProcessProxyABC.ip_is_local(self.ip):
+                if BaseKernelLifecycleManagerABC.ip_is_local(self.ip):
                     result = self.local_signal(signum)
                 else:
                     result = self.remote_signal(signum)
         return result
 
     def kill(self):
-        """Terminate the process proxy process.
+        """Terminate the lifecycle manager process.
 
         First attempts graceful termination, then forced termination.
         Note that this should only be necessary if the message-based kernel termination has
@@ -264,10 +264,10 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         if i > max_poll_attempts:  # Send -9 signal if process is still alive
             if self.local_proc:
                 result = self.local_proc.kill()
-                self.log.debug("BaseProcessProxy.kill(): {}".format(result))
+                self.log.debug("BaseKernelLifecycleManager.kill(): {}".format(result))
             else:
                 if self.ip and self.pid > 0:
-                    if BaseProcessProxyABC.ip_is_local(self.ip):
+                    if BaseKernelLifecycleManagerABC.ip_is_local(self.ip):
                         result = self.local_signal(signal.SIGKILL)
                     else:
                         result = self.remote_signal(signal.SIGKILL)
@@ -275,7 +275,7 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         return result
 
     def terminate(self):
-        """Gracefully terminate the process proxy process.
+        """Gracefully terminate the lifecycle manager process.
 
         Note that this should only be necessary if the message-based kernel termination has
         proven unsuccessful.
@@ -284,10 +284,10 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         result = None
         if self.local_proc:
             result = self.local_proc.terminate()
-            self.log.debug("BaseProcessProxy.terminate(): {}".format(result))
+            self.log.debug("BaseKernelLifecycleManager.terminate(): {}".format(result))
         else:
             if self.ip and self.pid > 0:
-                if BaseProcessProxyABC.ip_is_local(self.ip):
+                if BaseKernelLifecycleManagerABC.ip_is_local(self.ip):
                     result = self.local_signal(signal.SIGTERM)
                 else:
                     result = self.remote_signal(signal.SIGTERM)
@@ -363,7 +363,7 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         return lines
 
     def remote_signal(self, signum):
-        """Sends signal `signum` to process proxy on remote host. """
+        """Sends signal `signum` to lifecycle manager on remote host. """
         val = None
         # if we have a process group, use that, else use the pid...
         target = '-' + str(self.pgid) if self.pgid > 0 and signum > 0 else str(self.pid)
@@ -459,32 +459,32 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
         #                                             "kernel" if max_kernels_per_user == 1 else "kernels")
         #         self.log_and_raise(http_status_code=403, reason=error_message)
 
-    def get_process_info(self):
-        """Captures the base information necessary for kernel persistence relative to process proxies.
+    def get_lifecycle_info(self):
+        """Captures the base information necessary for kernel persistence relative to lifecycle managers.
 
         The superclass method must always be called first to ensure proper ordering.  Since this is the
         most base class, no call to `super()` is necessary.
         """
-        process_info = {'pid': self.pid, 'pgid': self.pgid, 'ip': self.ip}
-        return process_info
+        lifecycle_info = {'pid': self.pid, 'pgid': self.pgid, 'ip': self.ip}
+        return lifecycle_info
 
-    def load_process_info(self, process_info):
-        """Loads the base information necessary for kernel persistence relative to process proxies.
+    def load_lifecycle_info(self, lifecycle_info):
+        """Loads the base information necessary for kernel persistence relative to lifecycle managers.
 
         The superclass method must always be called first to ensure proper ordering.  Since this is the
         most base class, no call to `super()` is necessary.
         """
-        self.pid = process_info['pid']
-        self.pgid = process_info['pgid']
-        self.ip = process_info['ip']
-        self.kernel_manager.ip = process_info['ip']
+        self.pid = lifecycle_info['pid']
+        self.pgid = lifecycle_info['pgid']
+        self.ip = lifecycle_info['ip']
+        self.kernel_manager.ip = lifecycle_info['ip']
 
-    def _validate_port_range(self, proxy_config):
+    def _validate_port_range(self, lifecycle_config):
         """Validates the port range configuration option to ensure appropriate values."""
         # Let port_range override global value - if set on kernelspec...
         port_range = self.kernel_manager.app_config.get('port_range','0..0')  # TODO - default val
-        if proxy_config.get('port_range'):
-            port_range = proxy_config.get('port_range')
+        if lifecycle_config.get('port_range'):
+            port_range = lifecycle_config.get('port_range')
 
         try:
             port_ranges = port_range.split("..")
@@ -617,17 +617,17 @@ class BaseProcessProxyABC(with_metaclass(abc.ABCMeta, object)):
             raise RuntimeError(reason)
 
 
-class LocalProcessProxy(BaseProcessProxyABC):
+class LocalKernelLifecycleManager(BaseKernelLifecycleManagerABC):
     """Manages the lifecycle of a locally launched kernel process.
 
-    This process proxy is used when no other process proxy is configured.
+    This lifecycle manager is used when no other lifecycle manager is configured.
     """
-    def __init__(self, kernel_manager, proxy_config):
-        super(LocalProcessProxy, self).__init__(kernel_manager, proxy_config)
+    def __init__(self, kernel_manager, lifecycle_config):
+        super(LocalKernelLifecycleManager, self).__init__(kernel_manager, lifecycle_config)
         kernel_manager.ip = localinterfaces.LOCALHOST
 
     def launch_process(self, kernel_cmd, **kwargs):
-        super(LocalProcessProxy, self).launch_process(kernel_cmd, **kwargs)
+        super(LocalKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
         # launch the local run.sh
         self.local_proc = launch_kernel(kernel_cmd, **kwargs)
@@ -643,11 +643,11 @@ class LocalProcessProxy(BaseProcessProxyABC):
         return self
 
 
-class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
-    """Abstract Base Class implementation associated with remote process proxies."""
+class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecycleManagerABC)):
+    """Abstract Base Class implementation associated with remote lifecycle managers."""
 
-    def __init__(self, kernel_manager, proxy_config):
-        super(RemoteProcessProxy, self).__init__(kernel_manager, proxy_config)
+    def __init__(self, kernel_manager, lifecycle_config):
+        super(RemoteKernelLifecycleManager, self).__init__(kernel_manager, lifecycle_config)
         self.response_socket = None
         self.start_time = None
         self.assigned_ip = None
@@ -670,7 +670,7 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
         kwargs['env']['EG_MIN_PORT_RANGE_SIZE'] = str(min_port_range_size)
         kwargs['env']['EG_MAX_PORT_RANGE_RETRIES'] = str(max_port_range_retries)
 
-        super(RemoteProcessProxy, self).launch_process(kernel_cmd, **kwargs)
+        super(RemoteKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
     @abc.abstractmethod
     def confirm_remote_startup(self):
@@ -685,8 +685,8 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
         launch fails.  It also helps distinguish local invocation issues from remote post-launch
         issues since the failure will be relatively immediate.
 
-        Note that this method only applies to those process proxy implementations that launch
-        from the local node.  Proxies like DistributedProcessProxy use rsh against a remote
+        Note that this method only applies to those lifecycle manager implementations that launch
+        from the local node.  Proxies like DistributedKernelLifecycleManager use rsh against a remote
         node, so there's not `local_proc` in play to interrogate.
         """
 
@@ -960,7 +960,7 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
     def handle_timeout(self):
         """Checks to see if the kernel launch timeout has been exceeded while awaiting connection info."""
         time.sleep(poll_interval)
-        time_interval = RemoteProcessProxy.get_time_diff(self.start_time, RemoteProcessProxy.get_current_time())
+        time_interval = RemoteKernelLifecycleManager.get_time_diff(self.start_time)
 
         if time_interval > self.kernel_launch_timeout:
             error_http_code = 500
@@ -978,7 +978,7 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
             process.terminate()
 
         self.tunnel_processes.clear()
-        super(RemoteProcessProxy, self).cleanup()
+        super(RemoteKernelLifecycleManager, self).cleanup()
 
     def send_signal(self, signum):
         """Sends `signum` via the communication port.
@@ -1007,11 +1007,11 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
                 if isinstance(e, OSError):
                     if e.errno == errno.ECONNREFUSED and signum == 0:  # Return False since there's no process.
                         return False
-                return super(RemoteProcessProxy, self).send_signal(signum)
+                return super(RemoteKernelLifecycleManager, self).send_signal(signum)
             finally:
                 sock.close()
         else:
-            return super(RemoteProcessProxy, self).send_signal(signum)
+            return super(RemoteKernelLifecycleManager, self).send_signal(signum)
 
     def shutdown_listener(self):
         """Sends a shutdown request to the kernel launcher listener."""
@@ -1054,36 +1054,41 @@ class RemoteProcessProxy(with_metaclass(abc.ABCMeta, BaseProcessProxyABC)):
                 del self.tunnel_processes[comm_port_name]
             self.comm_port = 0
 
-    def get_process_info(self):
+    def get_lifecycle_info(self):
         """Captures the base information necessary for kernel persistence relative to remote processes."""
-        process_info = super(RemoteProcessProxy, self).get_process_info()
-        process_info.update({'assigned_ip': self.assigned_ip,
+        lifecycle_info = super(RemoteKernelLifecycleManager, self).get_lifecycle_info()
+        lifecycle_info.update({'assigned_ip': self.assigned_ip,
                              'assigned_host': self.assigned_host,
                              'comm_ip': self.comm_ip,
                              'comm_port': self.comm_port,
                              'tunneled_connect_info': self.tunneled_connection_info})
-        return process_info
+        return lifecycle_info
 
-    def load_process_info(self, process_info):
+    def load_lifecycle_info(self, lifecycle_info):
         """Captures the base information necessary for kernel persistence relative to remote processes."""
-        super(RemoteProcessProxy, self).load_process_info(process_info)
-        self.assigned_ip = process_info['assigned_ip']
-        self.assigned_host = process_info['assigned_host']
-        self.comm_ip = process_info['comm_ip']
-        self.comm_port = process_info['comm_port']
-        if 'tunneled_connect_info' in process_info and process_info['tunneled_connect_info'] is not None:
+        super(RemoteKernelLifecycleManager, self).load_lifecycle_info(lifecycle_info)
+        self.assigned_ip = lifecycle_info['assigned_ip']
+        self.assigned_host = lifecycle_info['assigned_host']
+        self.comm_ip = lifecycle_info['comm_ip']
+        self.comm_port = lifecycle_info['comm_port']
+        if 'tunneled_connect_info' in lifecycle_info and lifecycle_info['tunneled_connect_info'] is not None:
             # If this was a tunneled connection, re-establish tunnels.  Note, this will reset the
             # communication socket (comm_ip, comm_port) members as well.
-            self._setup_connection_info(process_info['tunneled_connect_info'])
+            self._setup_connection_info(lifecycle_info['tunneled_connect_info'])
 
     @staticmethod
     def get_current_time():
-        # Return the current time stamp in UTC time epoch format in milliseconds, e.g.
+        """ Return the current time stamp in UTC time epoch format in milliseconds """
         return timegm(_tz.utcnow().utctimetuple()) * 1000
 
     @staticmethod
-    def get_time_diff(time1, time2):
-        # Return the difference between two timestamps in seconds, assuming the timestamp is in milliseconds
-        # e.g. the difference between 1504028203000 and 1504028208300 is 5300 milliseconds or 5.3 seconds
-        diff = abs(time2 - time1)
+    def get_time_diff(start_time, end_time=None):
+        """ Return the difference between two timestamps in seconds, assuming the timestamp is in milliseconds
+            e.g. the difference between 1504028203000 and 1504028208300 is 5300 milliseconds or 5.3 seconds.
+            if `end_time` is None, the current time is used.
+        """
+        if end_time is None:
+            end_time = RemoteKernelLifecycleManager.get_current_time()
+
+        diff = abs(end_time - start_time)
         return float("%d.%d" % (diff / 1000, diff % 1000))
