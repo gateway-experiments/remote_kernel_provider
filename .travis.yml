@@ -1,0 +1,12 @@
+language: python
+python:
+    - 3.6
+    - 3.5
+    - 3.4
+install:
+  - pip install --upgrade setuptools pip
+  - pip install --upgrade -e .[test] pytest-cov codecov
+script:
+  - py.test --cov remote_kernel_provider remote_kernel_provider
+after_success:
+  - codecov
