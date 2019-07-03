@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import sys
 import unittest
 
 from os.path import join as pjoin

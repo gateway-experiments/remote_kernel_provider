@@ -21,13 +21,14 @@ import random
 from socket import timeout, socket, gethostbyname, gethostname, AF_INET, SOCK_STREAM, SHUT_RDWR, SHUT_WR
 from tornado import web
 from calendar import timegm
+from datetime import datetime
 from ipython_genutils.py3compat import with_metaclass
-from jupyter_client import launch_kernel, localinterfaces
-from notebook import _tz
+from jupyter_kernel_mgmt import localinterfaces
 from zmq.ssh import tunnel
 from enum import Enum
 from Crypto.Cipher import AES
 
+from .launcher import launch_kernel
 
 # Default logging level of paramiko produces too much noise - raise to warning only.
 logging.getLogger('paramiko').setLevel(os.getenv('EG_SSH_LOG_LEVEL', logging.WARNING))
@@ -1079,7 +1080,7 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
     @staticmethod
     def get_current_time():
         """ Return the current time stamp in UTC time epoch format in milliseconds """
-        return timegm(_tz.utcnow().utctimetuple()) * 1000
+        return timegm(datetime.utcnow().utctimetuple()) * 1000
 
     @staticmethod
     def get_time_diff(start_time, end_time=None):
