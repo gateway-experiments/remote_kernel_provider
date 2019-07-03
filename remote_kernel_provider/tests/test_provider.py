@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import sys
 import unittest
 
 from os.path import join as pjoin
@@ -14,9 +13,8 @@ from ..manager import RemoteKernelManager
 from ..lifecycle_manager import RemoteKernelLifecycleManager
 
 
-sample_kernel_json = {'argv':['cat', '{kernel_id}', '{response_address}'],
-                      'display_name':'Test kernel',
-                     }
+sample_kernel_json = {'argv': ['cat', '{kernel_id}', '{response_address}'],
+                      'display_name': 'Test kernel', }
 
 dummy_connection_info = {'stdin_port': 47557, 'ip': '172.16.18.82', 'control_port': 55288,
                          'hb_port': 55562, 'signature_scheme': 'hmac-sha256',
@@ -43,7 +41,7 @@ def is_uuid(uuid_to_test):
 
 
 def is_response_address(addr_to_test):
-    return re.match("[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\:[0-9]{4,5}$", addr_to_test) is not None
+    return re.match(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\:[0-9]{4,5}$", addr_to_test) is not None
 
 
 class DummyKernelLifecycleManager(RemoteKernelLifecycleManager):
@@ -65,6 +63,7 @@ class DummyKernelLifecycleManager(RemoteKernelLifecycleManager):
 
     def kill(self):
         pass
+
 
 class DummyKernelProvider(RemoteKernelProviderBase):
     """A dummy kernelspec provider subclass for testing"""
