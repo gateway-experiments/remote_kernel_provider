@@ -90,7 +90,7 @@ class RemoteKernelManager(KernelManagerABC):
                        format(self.kernel_spec.display_name, lifecycle_manager_class_name))
         lifecycle_manager_class = import_item(lifecycle_manager_class_name)
         self.lifecycle_manager = lifecycle_manager_class(kernel_manager=self,
-                                                   lifecycle_config=self.lifecycle_info.get('config', {}))
+                                                         lifecycle_config=self.lifecycle_info.get('config', {}))
 
         # format command
         kernel_cmd = self.format_kernel_cmd()
@@ -196,13 +196,13 @@ class RemoteKernelManager(KernelManagerABC):
         """
         user_overrides = {}
         user_overrides.update({key: value for key, value in legacy_env.items()
-                                   if key.startswith('KERNEL_') or
-                                    key in self.app_config.get('env_process_whitelist',[]) or
-                                    key in self.app_config.get('env_whitelist',[])})
+                               if key.startswith('KERNEL_') or
+                               key in self.app_config.get('env_process_whitelist', []) or
+                               key in self.app_config.get('env_whitelist', [])})
         user_overrides.update({key: value for key, value in kernel_params_env.items()
-                                   if key.startswith('KERNEL_') or
-                                    key in self.app_config.get('env_process_whitelist',[]) or
-                                    key in self.app_config.get('env_whitelist',[])})
+                               if key.startswith('KERNEL_') or
+                               key in self.app_config.get('env_process_whitelist', []) or
+                               key in self.app_config.get('env_whitelist', [])})
         return user_overrides
 
     def format_kernel_cmd(self):
@@ -225,14 +225,14 @@ class RemoteKernelManager(KernelManagerABC):
                   resource_dir=self.kernel_spec.resource_dir,
                   response_address=self.response_address,
                   port_range=self.port_range,
-                  kernel_id=self.kernel_id,
-                 )
+                  kernel_id=self.kernel_id, )
 
         # Let any parameters be available for substitutions.
         params = self.kernel_params.copy()
         ns.update(params)
 
         pat = re.compile(r'\{([A-Za-z0-9_]+)\}')
+
         def from_ns(match):
             """Get the key out of ns if it's there, otherwise no change."""
             return ns.get(match.group(1), match.group())

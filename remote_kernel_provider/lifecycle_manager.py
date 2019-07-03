@@ -21,13 +21,14 @@ import random
 from socket import timeout, socket, gethostbyname, gethostname, AF_INET, SOCK_STREAM, SHUT_RDWR, SHUT_WR
 from tornado import web
 from calendar import timegm
+from datetime import datetime
 from ipython_genutils.py3compat import with_metaclass
-from jupyter_client import launch_kernel, localinterfaces
-from notebook import _tz
+from jupyter_kernel_mgmt import localinterfaces
 from zmq.ssh import tunnel
 from enum import Enum
 from Crypto.Cipher import AES
 
+from .launcher import launch_kernel
 
 # Default logging level of paramiko produces too much noise - raise to warning only.
 logging.getLogger('paramiko').setLevel(os.getenv('EG_SSH_LOG_LEVEL', logging.WARNING))
@@ -124,9 +125,11 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
 
         # Handle authorization sets...
         # Take union of unauthorized users...
-        self.unauthorized_users = self.kernel_manager.app_config.get('unauthorized_users',{'root'})  # TODO - default val
+        # TODO - default val
+        self.unauthorized_users = self.kernel_manager.app_config.get('unauthorized_users', {'root'})
         if lifecycle_config.get('unauthorized_users'):
-            self.unauthorized_users = self.unauthorized_users.union(lifecycle_config.get('unauthorized_users').split(','))
+            self.unauthorized_users = self.unauthorized_users.union(
+                lifecycle_config.get('unauthorized_users').split(','))
 
         # Let authorized users override global value - if set on kernelspec...
         if lifecycle_config.get('authorized_users'):
@@ -135,11 +138,11 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
             self.authorized_users = self.kernel_manager.app_config.get('authorized_users') or set()
 
         # Represents the local process (from popen) if applicable.  Note that we could have local_proc = None even when
-        # the subclass is a LocalKernelLifecycleManager (or YarnKernelLifecycleManager).  This will happen if EG is restarted and the
-        # persisted kernel-sessions indicate that its now running on a different server.  In those cases, we use the ip
-        # member variable to determine if the persisted state is local or remote and use signals with the pid to
-        # implement the poll, kill and send_signal methods.  As a result, what was a local kernel with one EG instance
-        # could be a remote kernel in a restarted EG instance - and vice versa.
+        # the subclass is a LocalKernelLifecycleManager (or YarnKernelLifecycleManager).  This will happen if EG is
+        # restarted and the persisted kernel-sessions indicate that its now running on a different server.  In those
+        # cases, we use the ip member variable to determine if the persisted state is local or remote and use signals
+        # with the pid to implement the poll, kill and send_signal methods.  As a result, what was a local kernel with
+        # one EG instance could be a remote kernel in a restarted EG instance - and vice versa.
         self.local_proc = None
         self.ip = None
         self.pid = 0
@@ -422,7 +425,8 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
 
         # Although it may already be set in the env, just override in case it was only set via command line or config
         # Convert to string since execve() (called by Popen in base classes) wants string values.
-        env_dict['EG_IMPERSONATION_ENABLED'] = str(self.kernel_manager.app_config.get('impersonation_enabled', 'False'))  # TODO default val
+        env_dict['EG_IMPERSONATION_ENABLED'] = \
+            str(self.kernel_manager.app_config.get('impersonation_enabled', 'False'))  # TODO default val
 
         # Now perform authorization checks
         if self.kernel_manager.kernel_username in self.unauthorized_users:
@@ -431,7 +435,8 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
         # If authorized users are non-empty, ensure user is in that set.
         if self.authorized_users.__len__() > 0:
             if self.kernel_manager.kernel_username not in self.authorized_users:
-                self._raise_authorization_error(self.kernel_manager.kernel_username, "not in the set of users authorized")
+                self._raise_authorization_error(self.kernel_manager.kernel_username,
+                                                "not in the set of users authorized")
 
     def _raise_authorization_error(self, kernel_username, differentiator_clause):
         """Raises a 403 status code after building the appropriate message."""
@@ -482,7 +487,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
     def _validate_port_range(self, lifecycle_config):
         """Validates the port range configuration option to ensure appropriate values."""
         # Let port_range override global value - if set on kernelspec...
-        port_range = self.kernel_manager.app_config.get('port_range','0..0')  # TODO - default val
+        port_range = self.kernel_manager.app_config.get('port_range', '0..0')  # TODO - default val
         if lifecycle_config.get('port_range'):
             port_range = lifecycle_config.get('port_range')
 
@@ -1058,10 +1063,10 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
         """Captures the base information necessary for kernel persistence relative to remote processes."""
         lifecycle_info = super(RemoteKernelLifecycleManager, self).get_lifecycle_info()
         lifecycle_info.update({'assigned_ip': self.assigned_ip,
-                             'assigned_host': self.assigned_host,
-                             'comm_ip': self.comm_ip,
-                             'comm_port': self.comm_port,
-                             'tunneled_connect_info': self.tunneled_connection_info})
+                               'assigned_host': self.assigned_host,
+                               'comm_ip': self.comm_ip,
+                               'comm_port': self.comm_port,
+                               'tunneled_connect_info': self.tunneled_connection_info})
         return lifecycle_info
 
     def load_lifecycle_info(self, lifecycle_info):
@@ -1079,7 +1084,7 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
     @staticmethod
     def get_current_time():
         """ Return the current time stamp in UTC time epoch format in milliseconds """
-        return timegm(_tz.utcnow().utctimetuple()) * 1000
+        return timegm(datetime.utcnow().utctimetuple()) * 1000
 
     @staticmethod
     def get_time_diff(start_time, end_time=None):

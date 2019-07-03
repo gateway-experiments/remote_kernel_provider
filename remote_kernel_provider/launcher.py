@@ -68,7 +68,7 @@ def launch_kernel(cmd, stdin=None, stdout=None, stderr=None, env=None,
 
     try:
         proc = Popen(cmd, **kwargs)
-    except Exception as exc:
+    except Exception:
         msg = (
             "Failed to run command:\n{}\n"
             "    PATH={!r}\n"
@@ -76,7 +76,7 @@ def launch_kernel(cmd, stdin=None, stdout=None, stderr=None, env=None,
         )
         # exclude environment variables,
         # which may contain access tokens and the like.
-        without_env = {key:value for key, value in kwargs.items() if key != 'env'}
+        without_env = {key: value for key, value in kwargs.items() if key != 'env'}
         msg = msg.format(cmd, env.get('PATH', os.defpath), without_env)
         get_logger().error(msg)
         raise
@@ -86,6 +86,7 @@ def launch_kernel(cmd, stdin=None, stdout=None, stderr=None, env=None,
         proc.stdin.close()
 
     return proc
+
 
 __all__ = [
     'launch_kernel',

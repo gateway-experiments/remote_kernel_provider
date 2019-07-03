@@ -19,7 +19,7 @@ skip_win32 = pytest.mark.skipif(sys.platform.startswith('win'), reason="Windows"
 
 class test_env(object):
     """Set Jupyter path variables to a temporary directory
-    
+
     Useful as a context manager or with explicit start/stop
     """
     def start(self):
@@ -31,14 +31,14 @@ class test_env(object):
             'IPYTHONDIR': pjoin(td.name, 'ipython'),
         })
         self.env_patch.start()
-    
+
     def stop(self):
         self.env_patch.stop()
         self.test_dir.cleanup()
-    
+
     def __enter__(self):
         self.start()
         return self.test_dir.name
-    
+
     def __exit__(self, *exc_info):
         self.stop()

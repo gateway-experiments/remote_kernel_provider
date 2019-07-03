@@ -61,10 +61,14 @@ setup_args = dict(
         'Programming Language :: Python :: 3',
     ],
     install_requires = [
-        'traitlets',
-        'ipython_genutils',
-        'jupyter_core',
-        'jupyter_kernel_mgmt'
+        'ipython_genutils>=0.2.0',
+        'jupyter_core>=4.4.0',
+        'jupyter_kernel_mgmt>=0.3.0',
+        'paramiko>=2.4.0',
+        'paramiko>=2.4.0',
+        'pycrypto>=2.6.1',
+        'tornado>=5.1',
+        'traitlets>=4.3.2',
     ],
     extras_require   = {
         'test': ['mock', 'pytest'],
