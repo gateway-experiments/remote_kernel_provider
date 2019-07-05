@@ -69,7 +69,7 @@ class DummyKernelProvider(RemoteKernelProviderBase):
     """A dummy kernelspec provider subclass for testing"""
     id = 'dummy'
     kernel_file = 'dummy_kspec.json'
-    lifecycle_manager_class = 'remote_kernel_provider.tests.test_provider.DummyKernelLifecycleManager'
+    lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.DummyKernelLifecycleManager']
 
 
 class RemoteKernelProviderTests(unittest.TestCase):
