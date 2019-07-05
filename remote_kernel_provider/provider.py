@@ -13,7 +13,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
     # The following must be overridden by subclasses
     id = None
     kernel_file = None
-    lifecycle_manager_class = None
+    lifecycle_manager_classes = []
 
     def launch(self, kernelspec_name, cwd=None, kernel_params=None):
         """Launch a kernel, return (connection_info, kernel_manager).
@@ -64,20 +64,20 @@ class RemoteKernelProviderBase(KernelSpecProvider):
         if lifecycle_info:
             class_name = lifecycle_info.get('class_name', None)
             if class_name is not None:
-                if class_name != self.lifecycle_manager_class:  # Legacy check...
+                if class_name not in self.lifecycle_manager_classes:  # Legacy check...
                     legacy_detected = True
-                    lifecycle_info.update({'class_name': self.lifecycle_manager_class})
+                    lifecycle_info.update({'class_name': self.lifecycle_manager_classes[0]})
             if 'config' not in lifecycle_info:  # if no config stanza, add one for consistency
                 lifecycle_info.update({"config": {}})
 
         if lifecycle_info is None:  # Be sure to have a class_name with empty config
-            lifecycle_info = {'class_name': self.lifecycle_manager_class, 'config': {}}
+            lifecycle_info = {'class_name': self.lifecycle_manager_classes[0], 'config': {}}
 
         if legacy_detected:
             self.log.warn("Legacy kernelspec detected with at '{resource_dir}'.  Ensure the contents of "
                           "'{kernel_json}' contain a 'lifecycle_info' stanza within 'metadata' with field "
-                          "'class_name: {expected_class}'".
+                          "class_name in '{expected_classes}'".
                           format(resource_dir=kernel_spec.resource_dir, kernel_json=self.kernel_file,
-                                 expected_class=self.lifecycle_manager_class))
+                                 expected_classes=self.lifecycle_manager_classes))
 
         return lifecycle_info
