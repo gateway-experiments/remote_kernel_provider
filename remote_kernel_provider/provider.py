@@ -56,7 +56,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
            This will be in the `process_proxy` stanza of the metadata.
         """
         legacy_detected = False
-        lifecycle_info = kernel_spec.metadata.get('lifecycle_info', None)
+        lifecycle_info = kernel_spec.metadata.get('lifecycle_manager', None)
         if lifecycle_info is None:
             lifecycle_info = kernel_spec.metadata.get('process_proxy', None)
             if lifecycle_info:
@@ -75,7 +75,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
 
         if legacy_detected:
             self.log.warn("Legacy kernelspec detected with at '{resource_dir}'.  Ensure the contents of "
-                          "'{kernel_json}' contain a 'lifecycle_info' stanza within 'metadata' with field "
+                          "'{kernel_json}' contain a 'lifecycle_manager' stanza within 'metadata' with field "
                           "class_name in '{expected_classes}'".
                           format(resource_dir=kernel_spec.resource_dir, kernel_json=self.kernel_file,
                                  expected_classes=self.lifecycle_manager_classes))
