@@ -116,7 +116,6 @@ class RemoteKernelManager(KernelManagerABC):
 
     def signal(self, signum):
         """Send a signal to the kernel."""
-        self.log.debug("RemoteKernelManager.signal_kernel({})".format(signum))
         if self.kernel:
             if signum == signal.SIGINT:
                 if self.sigint_value is None:
