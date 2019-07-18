@@ -105,3 +105,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# macos desktop services
+.DS_Store

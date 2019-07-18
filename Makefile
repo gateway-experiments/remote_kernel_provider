@@ -5,11 +5,17 @@ help:
 # http://marmelab.com/blog/2016/02/29/auto-documented-makefile.html
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+VERSION?=0.1.0.dev0
+
+TOREE_LAUNCHER_FILES:=$(shell find remote_kernel_provider/kernel-launchers/scala/toree-launcher/src -type f -name '*')
+
+
 clean: clean-build clean-pyc clean-test ## remove all build, test, coverage and Python artifacts
 
 clean-build: ## remove build artifacts
 	rm -fr build/
 	rm -fr dist/
+	rm -fr remote_kernel_provider/kernel-launchers/scala/lib
 	rm -fr .eggs/
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
@@ -30,7 +36,7 @@ lint: ## check style with flake8
 	flake8 remote_kernel_provider 
 
 test: ## run tests quickly with the default Python
-	python setup.py test
+	pytest -v --cov remote_kernel_provider remote_kernel_provider
 
 docs: ## generate Sphinx HTML documentation, including API docs
 	rm -f docs/remote_kernel_provider.rst
@@ -42,10 +48,18 @@ docs: ## generate Sphinx HTML documentation, including API docs
 release: dist ## package and upload a release
 	twine upload dist/*
 
-dist: clean ## builds source and wheel package
+dist: clean remote_kernel_provider/kernel-launchers/scala/lib ## builds source and wheel package
 	python setup.py sdist
 	python setup.py bdist_wheel
 	ls -l dist
 
 install: clean ## install the package to the active Python's site-packages
 	python setup.py install
+
+
+remote_kernel_provider/kernel-launchers/scala/lib: $(TOREE_LAUNCHER_FILES)
+	-rm -rf remote_kernel_provider/kernel-launchers/scala/lib
+	mkdir -p remote_kernel_provider/kernel-launchers/scala/lib
+	@(cd remote_kernel_provider/kernel-launchers/scala/toree-launcher; sbt -Dversion=$(VERSION) package; cp target/scala-2.11/*.jar ../lib)
+	curl -L https://repository.apache.org/content/repositories/releases/org/apache/toree/toree-assembly/0.3.0-incubating/toree-assembly-0.3.0-incubating.jar --output ./remote_kernel_provider/kernel-launchers/scala/lib/toree-assembly-0.3.0-incubating.jar
+

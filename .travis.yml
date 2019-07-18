@@ -1,8 +1,17 @@
 language: python
+
 python:
     - 3.6
     - 3.5
     - 3.4
+
+cache:
+    directories:
+     - /home/travis/.sbt/
+
+before_install:
+    - mkdir -p $HOME/.sbt/launchers/1.2.1
+    - curl -L -o $HOME/.sbt/launchers/1.2.1/sbt-launch.jar http://central.maven.org/maven2/org/scala-sbt/sbt-launch/1.2.1/sbt-launch-1.2.1.jar
 
 install:
   - pip install --upgrade setuptools pip flake8 pytest-cov codecov
@@ -11,9 +20,8 @@ install:
   - pip freeze
 
 script:
-  - echo "SKIPPING TESTS UNTIL JUPYTER_KERNEL_MGMT HAS BEEN UPDATED"
-  # Skip tests until property jupyter_kernel_mgmt is available
-  # - py.test --cov remote_kernel_provider remote_kernel_provider
+  - echo "SKIPPING PROVIDER TESTS UNTIL JUPYTER_KERNEL_MGMT HAS BEEN UPDATED"
+  - make test
 
 after_success:
   - echo "Travis exited with ${TRAVIS_TEST_RESULT}"
