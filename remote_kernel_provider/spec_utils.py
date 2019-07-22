@@ -5,6 +5,10 @@ from os import path
 from distutils import dir_util
 
 kernel_launchers_dir = path.join(path.dirname(__file__), 'kernel-launchers')
+kernel_resources_dir = path.join(path.dirname(__file__), 'kernel-resources')
+
+launcher_dirs = ['python', 'r', 'scala', 'kubernetes', 'docker']
+resource_dirs = ['python', 'r', 'scala', 'tensorflow']
 
 
 def create_staging_directory(parent_dir=None):
@@ -19,36 +23,21 @@ def delete_staging_directory(dir_name):
     shutil.rmtree(dir_name)
 
 
-def copy_python_launcher(dir_name):
-    """Copies the Python launcher files to the specified directory."""
+def copy_kernelspec_files(dir_name, launcher_type='python', resource_type=None):
+    """Copies the launcher files specified by `launcher_type` to the specified directory."""
 
-    python_dir = path.join(kernel_launchers_dir, 'python')
-    dir_util.copy_tree(src=python_dir, dst=dir_name)
+    if launcher_type not in launcher_dirs:
+        raise ValueError("Invalid launcher_type '{}' detected! Must be one of: {}".format(launcher_type, launcher_dirs))
 
+    # If resource is not specified, default to launcher_type.  For the most part it will be the language,
+    # but if not, this will raise.
+    if resource_type is None:
+        resource_type = launcher_type
+    if resource_type not in resource_dirs:
+        raise ValueError("Invalid resource_type '{}' detected! Must be one of: {}".format(resource_type, resource_dirs))
 
-def copy_r_launcher(dir_name):
-    """Copies the R launcher files to the specified directory."""
+    src_dir = path.join(kernel_launchers_dir, launcher_type)
+    dir_util.copy_tree(src=src_dir, dst=dir_name)
 
-    r_dir = path.join(kernel_launchers_dir, 'R')
-    dir_util.copy_tree(src=r_dir, dst=dir_name)
-
-
-def copy_scala_launcher(dir_name):
-    """Copies the Scala launcher files to the specified directory."""
-
-    scala_dir = path.join(kernel_launchers_dir, 'scala')
-    dir_util.copy_tree(src=scala_dir, dst=dir_name)
-
-
-def copy_kubernetes_launcher(dir_name):
-    """Copies the Kubernetes launcher files to the specified directory."""
-
-    k8s_dir = path.join(kernel_launchers_dir, 'kubernetes')
-    dir_util.copy_tree(src=k8s_dir, dst=dir_name)
-
-
-def copy_docker_launcher(dir_name):
-    """Copies the Docker launcher files to the specified directory."""
-
-    docker_dir = path.join(kernel_launchers_dir, 'docker')
-    dir_util.copy_tree(src=docker_dir, dst=dir_name)
+    src_dir = path.join(kernel_resources_dir, resource_type)
+    dir_util.copy_tree(src=src_dir, dst=dir_name)

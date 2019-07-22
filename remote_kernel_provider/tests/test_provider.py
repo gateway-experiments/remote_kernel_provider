@@ -1,6 +1,5 @@
 import json
 import os
-import pytest
 import re
 
 import jupyter_kernel_mgmt
@@ -13,10 +12,6 @@ from ..provider import RemoteKernelProviderBase
 from ..manager import RemoteKernelManager
 from ..lifecycle_manager import RemoteKernelLifecycleManager
 
-# TODO - remove skip once jupyter_kernel_mgmt can discover xxx.json specs; dev envs will have update, TRAVIS won't
-minversion = pytest.mark.skipif(
-    os.environ.get('TRAVIS').lower() == 'true', reason="Waiting for jupyter_kernel_mgmt update!"
-)
 
 sample_kernel_json = {'argv': ['cat', '{kernel_id}', '{response_address}'], 'display_name': 'Test kernel', }
 
@@ -94,7 +89,6 @@ class BarKernelProvider(RemoteKernelProviderBase):
     lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.BarKernelLifecycleManager']
 
 
-@minversion
 class TestRemoteKernelProvider:
 
     env_patch = None
