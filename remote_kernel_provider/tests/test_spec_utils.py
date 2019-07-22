@@ -48,7 +48,17 @@ def test_copy_python_launcher(create_temp_dir):
     staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
     spec_dir = path.join(staging_dir, kernel_name)
 
-    spec_utils.copy_python_launcher(spec_dir)
+    # use this opportunity to use a bogus launch-type...
+    with pytest.raises(ValueError) as ve:
+        assert spec_utils.copy_kernelspec_files(spec_dir, launcher_type='bogus-type')
+    assert str(ve.value).startswith("Invalid launcher_type 'bogus-type'")
+
+    # and a bogus resource-type...
+    with pytest.raises(ValueError) as ve:
+        assert spec_utils.copy_kernelspec_files(spec_dir, launcher_type='python', resource_type='bogus-type')
+    assert str(ve.value).startswith("Invalid resource_type 'bogus-type'")
+
+    spec_utils.copy_kernelspec_files(spec_dir)  # exercise defaulted param
 
     assert path.isdir(spec_dir)
     scripts_dir = path.join(spec_dir, 'scripts')
@@ -68,7 +78,7 @@ def test_copy_r_launcher(create_temp_dir):
     staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
     spec_dir = path.join(staging_dir, kernel_name)
 
-    spec_utils.copy_r_launcher(spec_dir)
+    spec_utils.copy_kernelspec_files(spec_dir, launcher_type='r')
 
     assert path.isdir(spec_dir)
     scripts_dir = path.join(spec_dir, 'scripts')
@@ -91,7 +101,7 @@ def test_copy_scala_launcher(create_temp_dir):
     staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
     spec_dir = path.join(staging_dir, kernel_name)
 
-    spec_utils.copy_scala_launcher(spec_dir)
+    spec_utils.copy_kernelspec_files(spec_dir, launcher_type='scala')
 
     assert path.isdir(spec_dir)
     lib_dir = path.join(spec_dir, 'lib')
@@ -121,7 +131,7 @@ def test_copy_kubernetes_launcher(create_temp_dir):
     staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
     spec_dir = path.join(staging_dir, kernel_name)
 
-    spec_utils.copy_kubernetes_launcher(spec_dir)
+    spec_utils.copy_kernelspec_files(spec_dir, launcher_type='kubernetes', resource_type='r')
 
     assert path.isdir(spec_dir)
     scripts_dir = path.join(spec_dir, 'scripts')
@@ -144,7 +154,7 @@ def test_copy_docker_launcher(create_temp_dir):
     staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
     spec_dir = path.join(staging_dir, kernel_name)
 
-    spec_utils.copy_docker_launcher(spec_dir)
+    spec_utils.copy_kernelspec_files(spec_dir, launcher_type='docker', resource_type='tensorflow')
 
     assert path.isdir(spec_dir)
     scripts_dir = path.join(spec_dir, 'scripts')
