@@ -5,7 +5,7 @@ help:
 # http://marmelab.com/blog/2016/02/29/auto-documented-makefile.html
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-VERSION?=0.1.0.dev0
+VERSION?=0.1.0
 
 TOREE_LAUNCHER_FILES:=$(shell find remote_kernel_provider/kernel-launchers/scala/toree-launcher/src -type f -name '*')
 
@@ -16,6 +16,8 @@ clean-build: ## remove build artifacts
 	rm -fr build/
 	rm -fr dist/
 	rm -fr remote_kernel_provider/kernel-launchers/scala/lib
+	rm -fr remote_kernel_provider/kernel-launchers/scala/toree-launcher/target
+	rm -fr remote_kernel_provider/kernel-launchers/scala/toree-launcher/project/target
 	rm -fr .eggs/
 	find . -name '*.egg-info' -exec rm -fr {} +
 	find . -name '*.egg' -exec rm -f {} +
