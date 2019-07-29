@@ -8,7 +8,8 @@ import abc
 
 import urllib3  # docker ends up using this and it causes lots of noise, so turn off warnings
 
-from jupyter_client import launch_kernel, localinterfaces
+from jupyter_kernel_mgmt import localinterfaces
+from .launcher import launch_kernel
 
 from .lifecycle_manager import RemoteKernelLifecycleManager
 
