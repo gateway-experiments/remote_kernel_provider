@@ -15,6 +15,13 @@ class RemoteKernelProviderBase(KernelSpecProvider):
     kernel_file = None
     lifecycle_manager_classes = []
 
+    def find_kernels(self):
+        """Offers kernel types from installed kernelspec directories.
+
+           Subclasses can perform optional pre and post checks surrounding call to superclass.
+        """
+        return super(RemoteKernelProviderBase, self).find_kernels()
+
     def launch(self, kernelspec_name, cwd=None, kernel_params=None):
         """Launch a kernel, return (connection_info, kernel_manager).
 

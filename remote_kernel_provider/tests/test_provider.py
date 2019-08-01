@@ -75,11 +75,18 @@ class BarKernelLifecycleManager(FooKernelLifecycleManager):
     pass  # Full inheritance from FooKernelLifecycleManager
 
 
+class BazKernelLifecycleManager(FooKernelLifecycleManager):
+    pass  # Full inheritance from FooKernelLifecycleManager
+
+
 class FooKernelProvider(RemoteKernelProviderBase):
     """A fake kernelspec provider subclass for testing"""
     id = 'foo'
     kernel_file = 'foo_kspec.json'
     lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.FooKernelLifecycleManager']
+
+    def find_kernels(self):
+        return super(FooKernelProvider, self).find_kernels()
 
 
 class BarKernelProvider(RemoteKernelProviderBase):
@@ -87,6 +94,16 @@ class BarKernelProvider(RemoteKernelProviderBase):
     id = 'bar'
     kernel_file = 'bar_kspec.json'
     lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.BarKernelLifecycleManager']
+
+
+class BazKernelProvider(RemoteKernelProviderBase):
+    """A fake kernelspec provider subclass for testing"""
+    id = 'baz'
+    kernel_file = 'baz_kspec.json'
+    lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.BazKernelLifecycleManager']
+
+    def find_kernels(self):
+        return {}
 
 
 class TestRemoteKernelProvider:
@@ -109,7 +126,8 @@ class TestRemoteKernelProvider:
                               'foo_kspec', 'bar_kspec.json', bar_kernel_json)
 
         cls.kernel_finder = jupyter_kernel_mgmt.discovery.KernelFinder(providers=[FooKernelProvider(),
-                                                                                  BarKernelProvider()])
+                                                                                  BarKernelProvider(),
+                                                                                  BazKernelProvider()])
 
     @classmethod
     def teardown_class(cls):
@@ -119,16 +137,20 @@ class TestRemoteKernelProvider:
         fake_kspecs = list(TestRemoteKernelProvider.kernel_finder.find_kernels())
         assert len(fake_kspecs) == 3
 
-        foo_kspecs = 0
+        foo_kspecs = bar_kspecs = 0
         for name, spec in fake_kspecs:
             assert name.startswith('/foo_kspec', 3)
             assert spec['argv'] == foo_kernel_json['argv']
             if name.startswith('foo/'):
                 foo_kspecs += 1
                 assert spec['display_name'] == foo_kernel_json['display_name']
-            else:
+            elif name.startswith('bar/'):
+                bar_kspecs += 1
                 assert spec['display_name'] == bar_kernel_json['display_name']
+            elif name.startswith('baz/'):
+                assert False  # If we have any, that's wrong.
         assert foo_kspecs == 2
+        assert bar_kspecs == 1
 
     def test_launch_remote_kernel_provider(self):
         conn_info, manager = TestRemoteKernelProvider.kernel_finder.launch('foo/foo_kspec')
