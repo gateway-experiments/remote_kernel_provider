@@ -84,19 +84,19 @@ setup_args = dict(
     ],
     install_requires = [
         'ipython_genutils>=0.2.0',
-        'jupyter_core>=4.4.0',
-        'jupyter_kernel_mgmt>=0.4.0',
+        'jupyter_core>=4.6.1',
+        'jupyter_kernel_mgmt>=0.5.1',
         'paramiko>=2.4.0',
         'pexpect>=4.2.0',
         'pycrypto>=2.6.1',
         'tornado>=5.1',
-        'traitlets>=4.3.2',
+        'traitlets>=4.3.3',
     ],
     tests_require    = [
         'mock',
         'pytest'
     ],
-    python_requires  = ">=3.4",
+    python_requires  = ">=3.5",
     cmdclass         = {
         'bdist_egg': bdist_egg if 'bdist_egg' in sys.argv else bdist_egg_disabled,
         'test': PyTest,

@@ -1,9 +1,8 @@
 """Provides base support to various remote kernel providers."""
-
-from .manager import RemoteKernelManager
+import asyncio
 from jupyter_kernel_mgmt.discovery import KernelSpecProvider
 from traitlets.log import get_logger as get_app_logger
-from traitlets.config import Application
+from .manager import RemoteKernelManager
 
 
 class RemoteKernelProviderBase(KernelSpecProvider):
@@ -14,7 +13,10 @@ class RemoteKernelProviderBase(KernelSpecProvider):
     id = None
     kernel_file = None
     lifecycle_manager_classes = []
+    app_config = None
+    provider_config = None
 
+    @asyncio.coroutine
     def find_kernels(self):
         """Offers kernel types from installed kernelspec directories.
 
@@ -22,7 +24,7 @@ class RemoteKernelProviderBase(KernelSpecProvider):
         """
         return super(RemoteKernelProviderBase, self).find_kernels()
 
-    def launch(self, kernelspec_name, cwd=None, kernel_params=None):
+    async def launch(self, kernelspec_name, cwd=None, launch_params=None):
         """Launch a kernel, return (connection_info, kernel_manager).
 
         name will be one of the kernel names produced by find_kernels()
@@ -32,31 +34,22 @@ class RemoteKernelProviderBase(KernelSpecProvider):
         kernelspec = self.ksm.get_kernel_spec(kernelspec_name)
         lifecycle_info = self._get_lifecycle_info(kernelspec)
 
-        # Make the appropriate application configuration (relative to provider) available during launch
-        app_config = self._get_app_config()
-
         # Launch the kernel via the kernel manager class method, returning its connection information
         # and kernel manager.
         kwargs = dict()
         kwargs['kernelspec'] = kernelspec
         kwargs['lifecycle_info'] = lifecycle_info
         kwargs['cwd'] = cwd
-        kwargs['kernel_params'] = kernel_params or {}
-        kwargs['app_config'] = app_config
-        return RemoteKernelManager.launch(**kwargs)
+        kwargs['launch_params'] = launch_params or {}
+        kwargs['app_config'] = self.app_config
+        kwargs['provider_config'] = self.provider_config
 
-    def launch_async(self, name, cwd=None):
-        pass
+        return await RemoteKernelManager.launch(**kwargs)
 
-    def _get_app_config(self):
-        """Pulls application configuration 'section' relative to current class."""
-
-        app_config = {}
-        parent_app = Application.instance()
-        if parent_app:
-            # Collect config relative to our class instance.
-            app_config = parent_app.config.get(self.__class__.__name__, {}).copy()
-        return app_config
+    def load_config(self, config=None):
+        # Make the appropriate application configuration (relative to provider) available during launch
+        self.app_config = config or {}
+        self.provider_config = self.app_config.get(self.__class__.__name__, {}).copy()
 
     def _get_lifecycle_info(self, kernel_spec):
         """Looks for the metadata stanza containing the process proxy information.

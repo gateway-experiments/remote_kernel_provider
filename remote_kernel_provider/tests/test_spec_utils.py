@@ -3,26 +3,11 @@ from remote_kernel_provider import spec_utils
 from os import path
 import glob
 import pytest
-import shutil
-import tempfile
-
-temp_dir = None
 
 
-@pytest.fixture(scope='function')
-def create_temp_dir(request):
-    global temp_dir
-    temp_dir = tempfile.mkdtemp()
-
-    def delete_temp_dir():
-        shutil.rmtree(temp_dir)
-
-    request.addfinalizer(delete_temp_dir)
-
-
-def test_staging_directory(create_temp_dir):
+def test_staging_directory(tmpdir):
     # Create two staging dirs, one in the temp location, the other with no parent.
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     assert path.isdir(staging_dir)
     assert path.basename(staging_dir).startswith("staging_")
 
@@ -39,13 +24,13 @@ def test_staging_directory(create_temp_dir):
 
     spec_utils.delete_staging_directory(staging_dir)
     assert not path.exists(staging_dir)
-    assert path.isdir(temp_dir)
+    assert path.isdir(tmpdir.dirname)
 
 
-def test_invalid_parameters(create_temp_dir):
+def test_invalid_parameters(tmpdir):
     kernel_name = 'invalid'
 
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     spec_dir = path.join(staging_dir, kernel_name)
 
     # use a bogus launch-type...
@@ -67,10 +52,10 @@ def test_invalid_parameters(create_temp_dir):
     assert not path.exists(staging_dir)
 
 
-def test_copy_python_launcher(create_temp_dir):
+def test_copy_python_launcher(tmpdir):
     kernel_name = 'python_kernel'
 
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     spec_dir = path.join(staging_dir, kernel_name)
 
     spec_utils.copy_kernelspec_files(spec_dir, launcher_type='python')
@@ -87,10 +72,10 @@ def test_copy_python_launcher(create_temp_dir):
     assert not path.exists(spec_dir)
 
 
-def test_copy_r_launcher(create_temp_dir):
+def test_copy_r_launcher(tmpdir):
     kernel_name = 'r_kernel'
 
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     spec_dir = path.join(staging_dir, kernel_name)
 
     spec_utils.copy_kernelspec_files(spec_dir, launcher_type='r')
@@ -115,10 +100,10 @@ def test_copy_r_launcher(create_temp_dir):
     assert not path.exists(spec_dir)
 
 
-def test_copy_scala_launcher(create_temp_dir):
+def test_copy_scala_launcher(tmpdir):
     kernel_name = 'scala_kernel'
 
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     spec_dir = path.join(staging_dir, kernel_name)
 
     spec_utils.copy_kernelspec_files(spec_dir, launcher_type='scala')
@@ -145,10 +130,10 @@ def test_copy_scala_launcher(create_temp_dir):
     assert not path.exists(spec_dir)
 
 
-def test_copy_only_resource(create_temp_dir):
+def test_copy_only_resource(tmpdir):
     kernel_name = 'resource-only'
 
-    staging_dir = spec_utils.create_staging_directory(parent_dir=temp_dir)
+    staging_dir = spec_utils.create_staging_directory(parent_dir=tmpdir.dirname)
     spec_dir = path.join(staging_dir, kernel_name)
 
     spec_utils.copy_kernelspec_files(spec_dir, launcher_type=None, resource_type='r')

@@ -9,7 +9,7 @@ import re
 import sys
 import uuid
 
-from .lifecycle_manager import RemoteKernelLifecycleManager, LocalKernelLifecycleManager
+from .lifecycle_manager import RemoteKernelLifecycleManager
 
 from jupyter_kernel_mgmt.managerabc import KernelManagerABC
 from ipython_genutils.importstring import import_item
@@ -40,19 +40,20 @@ class RemoteKernelManager(KernelManagerABC):
         self.lifecycle_info = kwargs.get('lifecycle_info')
         self.cwd = kwargs.get('cwd')
         self.app_config = kwargs.get('app_config', {})
-        self.kernel_params = kwargs.get('kernel_params', {})
+        self.provider_config = kwargs.get('provider_config', {})
+        self.launch_params = kwargs.get('launch_params', {})
         self.env = self.kernel_spec.env.copy()  # Seed env from kernelspec
-        self.env.update(self._capture_user_overrides(kwargs.get('env', {}), self.kernel_params.get('env', {})))
+        self.env.update(self._capture_user_overrides(kwargs.get('env', {}), self.launch_params.get('env', {})))
 
         self.kernel_id = RemoteKernelManager.get_kernel_id(self.env)
         self.kernel_username = RemoteKernelManager.get_kernel_username(self.env)
         self.shutdown_wait_time = 5.0  # TODO - handle this better
 
     @classmethod
-    def launch(cls, **kwargs):
+    async def launch(cls, **kwargs):
         remote_kernel_manager_class = import_item(RemoteKernelManager.remote_kernel_manager_class_name)
         kernel_manager = remote_kernel_manager_class(**kwargs)
-        kernel_manager.start_kernel()
+        await kernel_manager.start_kernel()
         return kernel_manager.lifecycle_manager.connection_info, kernel_manager
 
     @classmethod
@@ -73,7 +74,7 @@ class RemoteKernelManager(KernelManagerABC):
             env['KERNEL_USERNAME'] = kernel_username
         return kernel_username
 
-    def start_kernel(self):
+    async def start_kernel(self):
         """Starts a kernel in a separate process.
 
         Where the started kernel resides depends on the configured lifecycle manager.
@@ -96,25 +97,19 @@ class RemoteKernelManager(KernelManagerABC):
         kernel_cmd = self.format_kernel_cmd()
 
         self.log.debug("Launching kernel: {} with command: {}".format(self.kernel_spec.display_name, kernel_cmd))
-        self.kernel = self.lifecycle_manager.launch_process(kernel_cmd, env=self.env)
+        self.kernel = await self.lifecycle_manager.launch_process(kernel_cmd, env=self.env)
 
-    def is_alive(self):
+    async def is_alive(self):
         """Check whether the kernel is currently alive (e.g. the process exists)
         """
         return self.kernel.poll() is None
 
-    def wait(self, timeout):
+    async def wait(self):
         """Wait for the kernel process to exit.
-
-        If timeout is a number, it is a maximum time in seconds to wait.
-        timeout=None means wait indefinitely.
-
-        Returns True if the kernel is still alive after waiting, False if it
-        exited (like is_alive()).
         """
-        self.kernel.wait()  # TODO - how to handle timeout
+        await self.kernel.wait()
 
-    def signal(self, signum):
+    async def signal(self, signum):
         """Send a signal to the kernel."""
         if self.kernel:
             if signum == signal.SIGINT:
@@ -146,7 +141,7 @@ class RemoteKernelManager(KernelManagerABC):
         else:
             raise RuntimeError("Cannot signal kernel. No kernel is running!")
 
-    def interrupt(self):
+    async def interrupt(self):
         """Interrupt the kernel by sending it a signal or similar event
 
         Kernels can request to get interrupts as messages rather than signals.
@@ -154,9 +149,9 @@ class RemoteKernelManager(KernelManagerABC):
         :meth:`.KernelClient2.interrupt` should send an interrupt_request or
         call this method as appropriate.
         """
-        self.signal(signal.SIGINT)
+        await self.signal(signal.SIGINT)
 
-    def kill(self):
+    async def kill(self):
         """Forcibly terminate the kernel.
 
         This method may be used to dispose of a kernel that won't shut down.
@@ -171,9 +166,9 @@ class RemoteKernelManager(KernelManagerABC):
             if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):
                 self.lifecycle_manager.shutdown_listener()
 
-        self.kernel.kill()
+        await self.kernel.kill()
 
-    def cleanup(self):
+    async def cleanup(self):
         """Clean up any resources, such as files created by the manager."""
 
         # Note we must use `lifecycle_manager` here rather than `kernel`, although they're the same value.
@@ -184,10 +179,10 @@ class RemoteKernelManager(KernelManagerABC):
             if isinstance(self.lifecycle_manager, RemoteKernelLifecycleManager):
                 self.lifecycle_manager.shutdown_listener()
 
-            self.lifecycle_manager.cleanup()
+            await self.lifecycle_manager.cleanup()
             self.lifecycle_manager = None
 
-    def _capture_user_overrides(self, legacy_env, kernel_params_env):
+    def _capture_user_overrides(self, legacy_env, launch_params_env):
         """
            Make a copy of any whitelist or KERNEL_ env values provided by user.  These will be injected
            back into the env after the kernelspec env has been applied.  This enables defaulting behavior
@@ -196,17 +191,17 @@ class RemoteKernelManager(KernelManagerABC):
         user_overrides = {}
         user_overrides.update({key: value for key, value in legacy_env.items()
                                if key.startswith('KERNEL_') or
-                               key in self.app_config.get('env_process_whitelist', []) or
-                               key in self.app_config.get('env_whitelist', [])})
-        user_overrides.update({key: value for key, value in kernel_params_env.items()
+                               key in self.provider_config.get('env_process_whitelist', []) or
+                               key in self.provider_config.get('env_whitelist', [])})
+        user_overrides.update({key: value for key, value in launch_params_env.items()
                                if key.startswith('KERNEL_') or
-                               key in self.app_config.get('env_process_whitelist', []) or
-                               key in self.app_config.get('env_whitelist', [])})
+                               key in self.provider_config.get('env_process_whitelist', []) or
+                               key in self.provider_config.get('env_whitelist', [])})
         return user_overrides
 
     def format_kernel_cmd(self):
         """ Replace templated args (e.g. {response_address}, {port_range}, or {kernel_id}). """
-        extra_arguments = self.kernel_params.get('extra_arguments', [])
+        extra_arguments = self.launch_params.get('extra_arguments', [])
         cmd = self.kernel_spec.argv + extra_arguments
 
         if cmd and cmd[0] in {'python',
@@ -220,15 +215,17 @@ class RemoteKernelManager(KernelManagerABC):
             # but it should be.
             cmd[0] = sys.executable
 
-        ns = dict(prefix=sys.prefix,
+        # Let any parameters be available for substitutions.  Establish set of substitutions
+        # from launch_params, then add system-owned parameters so those take precedence.
+        ns = dict()
+        if isinstance(self.launch_params, dict):
+            ns.update(self.launch_params)
+
+        ns.update(dict(prefix=sys.prefix,
                   resource_dir=self.kernel_spec.resource_dir,
                   response_address=self.response_address,
                   port_range=self.port_range,
-                  kernel_id=self.kernel_id, )
-
-        # Let any parameters be available for substitutions.
-        params = self.kernel_params.copy()
-        ns.update(params)
+                  kernel_id=self.kernel_id, ))
 
         pat = re.compile(r'\{([A-Za-z0-9_]+)\}')
 
@@ -292,25 +289,3 @@ class RemoteKernelManager(KernelManagerABC):
         # Refresh persisted state.
         self.parent.parent.kernel_session_manager.refresh_session(self.kernel_id)
         self.restarting = False
-
-    # TODO - Is this necessary now?
-    def write_connection_file(self):
-        """Write connection info to JSON dict in self.connection_file if the kernel is local.
-
-        If this is a remote kernel that's using a response address or we're restarting, we should skip the
-        write_connection_file since it will create 5 useless ports that would not adhere to port-range
-        restrictions if configured.
-        """
-        if (isinstance(self.lifecycle_manager, LocalKernelLifecycleManager) or not self.response_address) \
-                and not self.restarting:
-            # However, since we *may* want to limit the selected ports, go ahead and get the ports using
-            # the lifecycle manager (will be LocalPropcessProxy for default case) since the port selection will
-            # handle the default case when the member ports aren't set anyway.
-            ports = self.lifecycle_manager.select_ports(5)
-            self.shell_port = ports[0]
-            self.iopub_port = ports[1]
-            self.stdin_port = ports[2]
-            self.hb_port = ports[3]
-            self.control_port = ports[4]
-
-            return super(RemoteKernelManager, self).write_connection_file()
