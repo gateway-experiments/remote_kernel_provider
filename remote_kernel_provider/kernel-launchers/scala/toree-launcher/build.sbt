@@ -18,4 +18,3 @@ val sparkVersion = "2.4.1"
 libraryDependencies += "org.apache.spark" %% "spark-sql" % sparkVersion % "provided"
 libraryDependencies += "com.typesafe.play" %% "play-json" % "2.3.10" // Apache v2
 libraryDependencies += "org.apache.toree" % "toree-assembly" % "0.3.0-incubating" /*from "http://archive.apache.org/dist/incubator/toree/0.3.0-incubating/toree/toree-assembly-0.3.0-incubating.jar"*/
-
