@@ -2,6 +2,7 @@
 # Distributed under the terms of the Modified BSD License.
 """Kernel managers that operate against a remote process."""
 
+import asyncio
 import os
 import sys
 import re
@@ -11,7 +12,6 @@ import abc
 import json
 import paramiko
 import logging
-import time
 import pexpect
 import getpass
 import subprocess
@@ -148,7 +148,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
         self.pgid = 0
 
     @abc.abstractmethod
-    def launch_process(self, kernel_cmd, **kwargs):
+    async def launch_process(self, kernel_cmd, **kwargs):
         """Provides basic implementation for launching the process corresponding to the lifecycle manager.
 
         All overrides should call this method via `super()` so that basic/common operations can be
@@ -191,7 +191,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
 
         self.log.debug("BaseKernelLifecycleManager.launch_process() env: {}".format(kwargs.get('env')))
 
-    def cleanup(self):
+    async def cleanup(self):
         """Performs optional cleanup after kernel is shutdown.  Child classes are responsible for implementations."""
         pass
 
@@ -206,7 +206,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
 
         return self.send_signal(0)
 
-    def wait(self):
+    async def wait(self):
         """Wait for the process to become inactive."""
         # If we have a local_proc, call its wait method.  This will cleanup any defunct processes when the kernel
         # is shutdown (when using waitAppCompletion = false).  Otherwise (if no local_proc) we'll use polling to
@@ -216,7 +216,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
 
         for i in range(max_poll_attempts):
             if self.poll():
-                time.sleep(poll_interval)
+                await asyncio.sleep(poll_interval)
             else:
                 break
         else:
@@ -250,7 +250,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
                     result = self.remote_signal(signum)
         return result
 
-    def kill(self):
+    async def kill(self):
         """Terminate the lifecycle manager process.
 
         First attempts graceful termination, then forced termination.
@@ -261,7 +261,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
         result = self.terminate()  # Send -15 signal first
         i = 1
         while self.poll() is None and i <= max_poll_attempts:
-            time.sleep(poll_interval)
+            await asyncio.sleep(poll_interval)
             i = i + 1
         if i > max_poll_attempts:  # Send -9 signal if process is still alive
             if self.local_proc:
@@ -637,11 +637,11 @@ class LocalKernelLifecycleManager(BaseKernelLifecycleManagerABC):
         super(LocalKernelLifecycleManager, self).__init__(kernel_manager, lifecycle_config)
         kernel_manager.ip = localinterfaces.LOCALHOST
 
-    def launch_process(self, kernel_cmd, **kwargs):
-        super(LocalKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
+    async def launch_process(self, kernel_cmd, **kwargs):
+        await super(LocalKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
         # launch the local run.sh
-        self.local_proc = launch_kernel(kernel_cmd, **kwargs)
+        self.local_proc = await launch_kernel(kernel_cmd, **kwargs)
         self.pid = self.local_proc.pid
         if hasattr(os, "getpgid"):
             try:
@@ -670,14 +670,14 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
         self.tunnel_processes = {}
         self._prepare_response_socket()
 
-    def launch_process(self, kernel_cmd, **kwargs):
+    async def launch_process(self, kernel_cmd, **kwargs):
 
         # TODO - remove override once we're no longer pulling from EG.  Port Range Min Size and Max
         # Retries can be inferred and defaulted (respectively).
-        super(RemoteKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
+        await super(RemoteKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
     @abc.abstractmethod
-    def confirm_remote_startup(self):
+    async def confirm_remote_startup(self):
         """Confirms the remote process has started and returned necessary connection information."""
         pass
 
@@ -819,31 +819,39 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
         payload = "".join([payload.decode("utf-8").rsplit("}", 1)[0], "}"])  # Get rid of padding after the '}'.
         return payload
 
-    def receive_connection_info(self):
+    async def receive_connection_info(self):
         """Monitors the response address for connection info sent by the remote kernel launcher."""
         # Polls the socket using accept.  When data is found, returns ready indicator and encrypted data.
         ready_to_connect = False
-        if self.response_socket:
-            conn = None
-            data = ''
-            try:
-                conn, address = self.response_socket.accept()
-                while 1:
-                    buffer = conn.recv(1024)
-                    if not buffer:  # send is complete, process payload
-                        self.log.debug("Received Payload '{}'".format(data))
-                        payload = self._decrypt(data)
-                        self.log.debug("Decrypted Payload '{}'".format(payload))
-                        connect_info = json.loads(payload)
-                        self.log.debug("Connect Info received from the launcher is as follows '{}'".
-                                       format(connect_info))
-                        self.log.debug("Host assigned to the Kernel is: '{}' '{}'".
-                                       format(self.assigned_host, self.assigned_ip))
+        loop = asyncio.get_event_loop()  # TODO confirm if this should be IOLoop.current() or whatever
 
-                        self._setup_connection_info(connect_info)
-                        ready_to_connect = True
-                        break
-                    data = data + buffer.decode(encoding='utf-8')  # append what we received until we get no more...
+        async def get_info(conn):
+            data = ''
+            while True:
+                buffer = await loop.sock_recv(conn, 1024)
+                if not buffer:  # send is complete, process payload
+                    self.log.debug("Received Payload '{}'".format(data))
+                    payload = self._decrypt(data)
+                    self.log.debug("Decrypted Payload '{}'".format(payload))
+                    connect_info = json.loads(payload)
+                    self.log.debug("Connect Info received from the launcher is as follows '{}'".
+                                   format(connect_info))
+                    self.log.debug("Host assigned to the Kernel is: '{}' '{}'".
+                                   format(self.assigned_host, self.assigned_ip))
+
+                    self._setup_connection_info(connect_info)
+                    break
+                data = data + buffer.decode(encoding='utf-8')  # append what we received until we get no more...
+            conn.close()
+
+        async def get_response():
+            conn, addr = await loop.sock_accept(self.response_socket)
+            await get_info(conn)
+
+        if self.response_socket:
+            try:
+                await get_response()
+                ready_to_connect = True
             except Exception as e:
                 if type(e) is timeout:
                     self.log.debug("Waiting for KernelID '{}' to send connection info from host '{}' - retrying..."
@@ -851,11 +859,8 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
                 else:
                     error_message = "Exception occurred waiting for connection file response for KernelId '{}' "\
                         "on host '{}': {}".format(self.kernel_id, self.assigned_host, str(e))
-                    self.kill()
+                    await self.kill()
                     self.log_and_raise(http_status_code=500, reason=error_message)
-            finally:
-                if conn:
-                    conn.close()
         else:
             error_message = "Unexpected runtime encountered for Kernel ID '{}' - no response socket exists!".\
                 format(self.kernel_id)
@@ -962,19 +967,19 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
             if not BaseKernelLifecycleManagerABC.ip_is_local(self.ip):  # only unset local_proc if we're remote
                 self.local_proc = None
 
-    def handle_timeout(self):
+    async def handle_timeout(self):
         """Checks to see if the kernel launch timeout has been exceeded while awaiting connection info."""
-        time.sleep(poll_interval)
+        await asyncio.sleep(poll_interval)
         time_interval = RemoteKernelLifecycleManager.get_time_diff(self.start_time)
 
         if time_interval > self.kernel_launch_timeout:
             error_http_code = 500
             reason = "Waited too long ({}s) to get connection file".format(self.kernel_launch_timeout)
             timeout_message = "KernelID: '{}' launch timeout due to: {}".format(self.kernel_id, reason)
-            self.kill()
+            await self.kill()
             self.log_and_raise(http_status_code=error_http_code, reason=timeout_message)
 
-    def cleanup(self):
+    async def cleanup(self):
         """Terminates tunnel processes, if applicable."""
         self.shutdown_listener()  # Ensure listener has been shutdown
 
@@ -985,7 +990,7 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
             process.terminate()
 
         self.tunnel_processes.clear()
-        super(RemoteKernelLifecycleManager, self).cleanup()
+        await super(RemoteKernelLifecycleManager, self).cleanup()
 
     def _send_listener_request(self, request, shutdown_socket=False):
         # Sends the request dictionary to the kernel listener via the comm port.  Caller is responsible for

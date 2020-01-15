@@ -1,13 +1,14 @@
+import asyncio
 import json
 import os
+import pytest
 import re
 
-import jupyter_kernel_mgmt
+from jupyter_kernel_mgmt.discovery import KernelFinder
 
 from os.path import join as pjoin
 from jupyter_core import paths
 from uuid import UUID
-from .utils import test_env
 from ..provider import RemoteKernelProviderBase
 from ..manager import RemoteKernelManager
 from ..lifecycle_manager import RemoteKernelLifecycleManager
@@ -54,20 +55,20 @@ class FooKernelLifecycleManager(RemoteKernelLifecycleManager):
     """A fake kernel provider for testing KernelFinder"""
     connection_info = None
 
-    def launch_process(self, kernel_cmd, **kwargs):
+    async def launch_process(self, kernel_cmd, **kwargs):
         assert is_uuid(kernel_cmd[1])
         assert is_response_address(kernel_cmd[2])
-        self.confirm_remote_startup()
+        await self.confirm_remote_startup()
         return self
 
-    def confirm_remote_startup(self):
+    async def confirm_remote_startup(self):
         self.connection_info = foo_connection_info
         return True
 
     def shutdown_listener(self):
         pass
 
-    def kill(self):
+    async def kill(self):
         pass
 
 
@@ -85,6 +86,7 @@ class FooKernelProvider(RemoteKernelProviderBase):
     kernel_file = 'foo_kspec.json'
     lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.FooKernelLifecycleManager']
 
+    @asyncio.coroutine
     def find_kernels(self):
         return super(FooKernelProvider, self).find_kernels()
 
@@ -102,65 +104,63 @@ class BazKernelProvider(RemoteKernelProviderBase):
     kernel_file = 'baz_kspec.json'
     lifecycle_manager_classes = ['remote_kernel_provider.tests.test_provider.BazKernelLifecycleManager']
 
+    @asyncio.coroutine
     def find_kernels(self):
         return {}
 
 
-class TestRemoteKernelProvider:
+@pytest.fixture
+def setup_test(setup_env):
 
-    env_patch = None
-    kernel_finder = None
+    install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'))
+    install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
+                          'foo_kspec', 'foo_kspec.json', foo_kernel_json)
+    install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
+                          'foo_kspec2', 'foo_kspec.json', foo_kernel_json)
 
-    @classmethod
-    def setup_class(cls):
-        cls.env_patch = test_env()
-        cls.env_patch.start()
-        install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'))
-        install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
-                              'foo_kspec', 'foo_kspec.json', foo_kernel_json)
-        install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
-                              'foo_kspec2', 'foo_kspec.json', foo_kernel_json)
+    # This kspec overlaps with foo/foo_kspec.  Will be located as bar/foo_kspec
+    install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
+                          'foo_kspec', 'bar_kspec.json', bar_kernel_json)
 
-        # This kspec overlaps with foo/foo_kspec.  Will be located as bar/foo_kspec
-        install_sample_kernel(pjoin(paths.jupyter_data_dir(), 'kernels'),
-                              'foo_kspec', 'bar_kspec.json', bar_kernel_json)
 
-        cls.kernel_finder = jupyter_kernel_mgmt.discovery.KernelFinder(providers=[FooKernelProvider(),
-                                                                                  BarKernelProvider(),
-                                                                                  BazKernelProvider()])
+@pytest.fixture
+def kernel_finder(setup_test):
+    kernel_finder = KernelFinder(providers=[FooKernelProvider(), BarKernelProvider(), BazKernelProvider()])
+    return kernel_finder
 
-    @classmethod
-    def teardown_class(cls):
-        cls.env_patch.stop()
 
-    def test_find_remote_kernel_provider(self):
-        fake_kspecs = list(TestRemoteKernelProvider.kernel_finder.find_kernels())
-        assert len(fake_kspecs) == 3
+pytestmark = pytest.mark.asyncio
 
-        foo_kspecs = bar_kspecs = 0
-        for name, spec in fake_kspecs:
-            assert name.startswith('/foo_kspec', 3)
-            assert spec['argv'] == foo_kernel_json['argv']
-            if name.startswith('foo/'):
-                foo_kspecs += 1
-                assert spec['display_name'] == foo_kernel_json['display_name']
-            elif name.startswith('bar/'):
-                bar_kspecs += 1
-                assert spec['display_name'] == bar_kernel_json['display_name']
-            elif name.startswith('baz/'):
-                assert False  # If we have any, that's wrong.
-        assert foo_kspecs == 2
-        assert bar_kspecs == 1
 
-    def test_launch_remote_kernel_provider(self):
-        conn_info, manager = TestRemoteKernelProvider.kernel_finder.launch('foo/foo_kspec')
-        assert isinstance(manager, RemoteKernelManager)
-        assert conn_info == foo_connection_info
-        assert manager.kernel_id is not None
-        assert is_uuid(manager.kernel_id)
+async def test_find_remote_kernel_provider(kernel_finder):
+    fake_kspecs = list(kernel_finder.find_kernels())
+    assert len(fake_kspecs) == 3
 
-        manager.kill()
-        assert manager.lifecycle_manager is not None
-        assert isinstance(manager.lifecycle_manager, FooKernelLifecycleManager)
-        manager.cleanup()
-        assert manager.lifecycle_manager is None
+    foo_kspecs = bar_kspecs = 0
+    for name, spec in fake_kspecs:
+        assert name.startswith('/foo_kspec', 3)
+        assert spec['argv'] == foo_kernel_json['argv']
+        if name.startswith('foo/'):
+            foo_kspecs += 1
+            assert spec['display_name'] == foo_kernel_json['display_name']
+        elif name.startswith('bar/'):
+            bar_kspecs += 1
+            assert spec['display_name'] == bar_kernel_json['display_name']
+        elif name.startswith('baz/'):
+            assert False  # If we have any, that's wrong.
+    assert foo_kspecs == 2
+    assert bar_kspecs == 1
+
+
+async def test_launch_remote_kernel_provider(kernel_finder):
+    conn_info, manager = await kernel_finder.launch('foo/foo_kspec')
+    assert isinstance(manager, RemoteKernelManager)
+    assert conn_info == foo_connection_info
+    assert manager.kernel_id is not None
+    assert is_uuid(manager.kernel_id)
+
+    await manager.kill()
+    assert manager.lifecycle_manager is not None
+    assert isinstance(manager.lifecycle_manager, FooKernelLifecycleManager)
+    await manager.cleanup()
+    assert manager.lifecycle_manager is None

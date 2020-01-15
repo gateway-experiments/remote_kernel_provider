@@ -52,7 +52,7 @@ class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
             self.kernel_executor_image = lifecycle_config.get('executor_image_name')
         self.kernel_executor_image = os.environ.get('KERNEL_EXECUTOR_IMAGE', self.kernel_executor_image)
 
-    def launch_process(self, kernel_cmd, **kwargs):
+    async def launch_process(self, kernel_cmd, **kwargs):
         """Launches the specified process within the container environment."""
         # Set env before superclass call so we see these in the debug output
 
@@ -65,7 +65,7 @@ class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
 
         self._enforce_uid_gid_blacklists(**kwargs)
 
-        super(ContainerKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
+        await super(ContainerKernelLifecycleManager, self).launch_process(kernel_cmd, **kwargs)
 
         self.local_proc = launch_kernel(kernel_cmd, **kwargs)
         self.pid = self.local_proc.pid
@@ -74,7 +74,7 @@ class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
         self.log.info("{}: kernel launched. Kernel image: {}, KernelID: {}, cmd: '{}'"
                       .format(self.__class__.__name__, self.kernel_image, self.kernel_id, kernel_cmd))
 
-        self.confirm_remote_startup()
+        await self.confirm_remote_startup()
 
         return self
 
@@ -133,7 +133,7 @@ class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
             # which should use the communication port.
             return super(ContainerKernelLifecycleManager, self).send_signal(signum)
 
-    def kill(self):
+    async def kill(self):
         """Kills a containerized kernel.
 
         Returns
@@ -147,26 +147,26 @@ class ContainerKernelLifecycleManager(RemoteKernelLifecycleManager):
 
         return result
 
-    def cleanup(self):
+    async def cleanup(self):
         # Since container objects don't necessarily go away on their own, we need to perform the same
         # cleanup we'd normally perform on forced kill situations.
 
-        self.kill()
-        super(ContainerKernelLifecycleManager, self).cleanup()
+        await self.kill()
+        await super(ContainerKernelLifecycleManager, self).cleanup()
 
-    def confirm_remote_startup(self):
+    async def confirm_remote_startup(self):
         """Confirms the container has started and returned necessary connection information."""
         self.start_time = RemoteKernelLifecycleManager.get_current_time()
         i = 0
         ready_to_connect = False  # we're ready to connect when we have a connection file to use
         while not ready_to_connect:
             i += 1
-            self.handle_timeout()
+            await self.handle_timeout()
 
             container_status = self.get_container_status(str(i))
             if container_status:
                 if self.assigned_host != '':
-                    ready_to_connect = self.receive_connection_info()
+                    ready_to_connect = await self.receive_connection_info()
                     self.pid = 0  # We won't send process signals for kubernetes lifecycle management
                     self.pgid = 0
             else:
