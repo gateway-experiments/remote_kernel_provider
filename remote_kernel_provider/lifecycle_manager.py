@@ -439,7 +439,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
             self._raise_authorization_error(self.kernel_manager.kernel_username, "not authorized")
 
         # If authorized users are non-empty, ensure user is in that set.
-        if self.authorized_users.__len__() > 0:
+        if len(self.authorized_users) > 0:
             if self.kernel_manager.kernel_username not in self.authorized_users:
                 self._raise_authorization_error(self.kernel_manager.kernel_username,
                                                 "not in the set of users authorized")
