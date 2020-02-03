@@ -833,7 +833,7 @@ class RemoteKernelLifecycleManager(with_metaclass(abc.ABCMeta, BaseKernelLifecyc
                     self.log.debug("Received Payload '{}'".format(data))
                     payload = self._decrypt(data)
                     self.log.debug("Decrypted Payload '{}'".format(payload))
-                    connect_info = json.loads(payload)
+                    connect_info = json.loads(payload.decode('utf-8'))
                     self.log.debug("Connect Info received from the launcher is as follows '{}'".
                                    format(connect_info))
                     self.log.debug("Host assigned to the Kernel is: '{}' '{}'".
