@@ -177,7 +177,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
         env_dict['KERNEL_ID'] = self.kernel_id
 
         kernel_language = 'unknown-kernel-language'
-        if len(self.kernel_manager.kernel_spec.language) > 0:
+        if self.kernel_manager.kernel_spec.language:
             kernel_language = self.kernel_manager.kernel_spec.language.lower()
         # if already set in env: stanza, let that override.
         env_dict['KERNEL_LANGUAGE'] = env_dict.get('KERNEL_LANGUAGE', kernel_language)
@@ -359,7 +359,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
         try:
             stdin, stdout, stderr = ssh.exec_command(command, timeout=30)
             lines = stdout.readlines()
-            if len(lines) == 0:  # if nothing in stdout, return stderr
+            if not lines:  # if nothing in stdout, return stderr
                 lines = stderr.readlines()
         except Exception as e:
             # Let caller decide if exception should be logged
@@ -439,7 +439,7 @@ class BaseKernelLifecycleManagerABC(with_metaclass(abc.ABCMeta, object)):
             self._raise_authorization_error(self.kernel_manager.kernel_username, "not authorized")
 
         # If authorized users are non-empty, ensure user is in that set.
-        if len(self.authorized_users) > 0:
+        if self.authorized_users:
             if self.kernel_manager.kernel_username not in self.authorized_users:
                 self._raise_authorization_error(self.kernel_manager.kernel_username,
                                                 "not in the set of users authorized")
