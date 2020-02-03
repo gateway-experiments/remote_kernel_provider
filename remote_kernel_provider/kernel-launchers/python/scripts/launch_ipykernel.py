@@ -177,7 +177,6 @@ def return_connection_info(connection_file, response_addr, lower_port, upper_por
 
     with open(connection_file) as fp:
         cf_json = json.load(fp)
-        fp.close()
 
     # add process and process group ids into connection info
     pid = os.getpid()
