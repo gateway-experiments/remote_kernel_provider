@@ -73,7 +73,7 @@ def get_gateway_request(sock):
         while True:
             buffer = conn.recv(1024).decode('utf-8')
             if not buffer:  # send is complete
-                request_info = json.loads(data)
+                request_info = json.loads(data.decode('utf-8'))
                 break
             data = data + buffer  # append what we received until we get no more...
     except Exception as e:
